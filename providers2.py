@@ -39,6 +39,7 @@ class Provider(object):
             global imageid, flavorid, _version, imgkey, apps, ipid
             request = requests.get(Provider.ROOT_URL_NU)
             data = request.json()
+
             for i in (data['versions']['version']):
                 if "CURRENT" in i['status']:
                     _version = i['id']
