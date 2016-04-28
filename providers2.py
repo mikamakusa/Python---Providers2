@@ -688,13 +688,26 @@ class Provider(object):
     class Network(object):
 
         @classmethod
-        def google(cls, project, netname, iprange, regname):
-            _body = '{ "autoCreateSubnetworks": false, "name": "%s" }' % netname
-            requests.post(Provider.ROOT_URL_GO + "/%s/global/networks" % project, data=_body)
-            if iprange is not None:
-                _body = '{"name": "%s","ipCidrRange": "%s","network": %s/%s/global/networks/%s"}' \
-                        % (netname, iprange, Provider.ROOT_URL_GO, project, netname)
-                requests.post(Provider.ROOT_URL_GO + "/%s/regions/%s/subnetworks" % (project, regname), data=_body)
+        def google(cls, project, netname, regname, nettype=None, iprange=None, attach=None, boundto=None):
+            if "Network" in nettype:
+                _body = '{ "autoCreateSubnetworks": false, "name": "%s" }' % netname
+                requests.post(Provider.ROOT_URL_GO + "/%s/global/networks" % project, data=_body)
+                if iprange is not None:
+                    _body = '{"name": "%s","ipCidrRange": "%s","network": %s/%s/global/networks/%s"}' \
+                            % (netname, iprange, Provider.ROOT_URL_GO, project, netname)
+                    requests.post(Provider.ROOT_URL_GO + "/%s/regions/%s/subnetworks" % (project, regname), data=_body)
+            elif "External" in nettype:
+                _body = '{ "kind": "compute#address", ' \
+                        '"resourceType": "addresses", ' \
+                        '"name": "%s", "region": "%s" }' % (netname, regname)
+                requests.post(Provider.ROOT_URL_GO + "/%s/regions/%s/addresses" % (project, regname), data=_body)
+                if attach:
+                    _body = '{ "instanceName": "%s", "zone": "%s", "networkInterface": "nic0", ' \
+                            '"accessConfigName": "External NAT", "kind": "compute#accessConfig", ' \
+                            '"resourceType": "instances", ' \
+                            '"address": "[IP address of newly created Static IP Address]" }' % (boundto, regname)
+                    requests.post(Provider.ROOT_URL_GO + "/%s/regions/%s/instances/%s"
+                                  % (project, regname, boundto), data=_body)
 
         @classmethod
         def aruba(cls, dc, username, password, netname, attach=None, servername=None):
@@ -738,5 +751,30 @@ class Provider(object):
     @classmethod
     class Firewall(object):
         @classmethod
-        def google(cls):
-            """"""
+        def google(cls, project, rulename, protocol=None, port=None, source=None):
+            global _body
+            if source:
+                _body = '{ "kind": "compute#firewall", "name": "%s", ' \
+                        '"network": "projects/%s/global/networks/default" ,' \
+                        '"sourceRanges": [ "%s" ]}' % (rulename, project, source)
+            if protocol and port:
+                _body = '{ "kind": "compute#firewall", "name": "%s", ' \
+                        '"allowed": [ { "IPProtocol": "%s", "ports": [ "%s" ] } ], ' \
+                        '"network": "projects/%s/global/networks/default"}' % (rulename, protocol, port, project)
+            if source and protocol and port:
+                _body = '{ "kind": "compute#firewall", "name": "%s", "allowed": [ { "IPProtocol": "%s", ' \
+                        '"ports": [ "%s" ] } ], "network": "projects/%s/global/networks/default", ' \
+                        '"sourceRanges": [ "%s" ]}' % (rulename, protocol, port, project, source)
+
+            requests.post(Provider.ROOT_URL_RS + "%s/global/firewalls" % project, data=_body)
+
+    @classmethod
+    class Container(object):
+        @classmethod
+        def google(cls, project, clname, regname, nodecount, password):
+            _body = '{ "cluster": { "name": "%s", "zone": "%s", "initialNodeCount": %i, ' \
+                    '"network": "default", "loggingService": "logging.googleapis.com", ' \
+                    '"monitoringService": "none", "nodeConfig": { "machineType": "n1-standard-1" }, ' \
+                    '"subnetwork": "default-329f99c0b83efc42", ' \
+                    '"masterAuth": { "user": "admin", "password": "%s" } } }' % (clname, regname, nodecount, password)
+            requests.post(Provider.ROOT_URL_RS + "%s/zones/%s/clusters" % (project, regname), data=_body)
